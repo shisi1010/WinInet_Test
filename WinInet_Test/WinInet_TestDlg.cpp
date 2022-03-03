@@ -156,9 +156,9 @@ HCURSOR CWinInet_TestDlg::OnQueryDragIcon()
 }
 
 
-std::string UTF8ToGB(const char* str)
+string UTF8ToGB(const char* str)
 {
-	std::string result;
+	string result;
 	WCHAR *strSrc;
 	LPSTR szRes;
 
@@ -177,7 +177,7 @@ std::string UTF8ToGB(const char* str)
 }
 
 
-std::string JsonToString(const Json::Value & root)
+string JsonToString(const Json::Value & root)
 {
 	static Json::Value def = []() {
 		Json::Value def;
@@ -186,10 +186,10 @@ std::string JsonToString(const Json::Value & root)
 		return def;
 	}();
 
-	std::ostringstream stream;
+	ostringstream stream;
 	Json::StreamWriterBuilder stream_builder;
 	stream_builder.settings_ = def;//Config emitUTF8
-	std::unique_ptr<Json::StreamWriter> writer(stream_builder.newStreamWriter());
+	unique_ptr<Json::StreamWriter> writer(stream_builder.newStreamWriter());
 	writer->write(root, &stream);
 	return stream.str();
 }
@@ -213,55 +213,54 @@ void CWinInet_TestDlg::OnBnClickedButtonGet()
 	CHttpClient hClient;
 
 	hClient.SetConnectTimeOut(5000); // 设置连接超时(单位：毫秒)
-	hClient.OpenRequest(lUrl);
-	hClient.SendRequest(NULL, 0);
-	hClient.SendRequestEx(0);
+	hClient.OpenRequest(lUrl); // 设置url
+	hClient.SendRequest(NULL, 0); // 设置请求头
+	hClient.SendRequestEx(0); // 额外的请求头
 	DWORD dwSendLen = 0;
-	hClient.SendReqBodyData(NULL, 0, dwSendLen);
-	hClient.EndSendRequest();
+	hClient.SendReqBodyData(NULL, 0, dwSendLen); // 请求体
+	hClient.EndSendRequest(); // 请求结束
 
-	DWORD resCode = hClient.GetRespCode();
-	std::string resHeader = hClient.GetRespHeader();
+	DWORD resCode = hClient.GetRespCode(); // HTTP响应码 200代表成功 404 not find 500 服务器错误
+	string resHeader = hClient.GetRespHeader(); // 返回头
 
 	DWORD dwResLen = 0;
 	DWORD dwLen = 1024;
 	CHAR* resData = new CHAR[dwLen];
 	
-	BOOL resBool = hClient.GetRespBodyData(resData, dwLen, dwResLen); // 获取HTTP响应消息体数据函数
-	
+	BOOL resBool = hClient.GetRespBodyData(resData, dwLen, dwResLen); // 获取HTTP响应消息体数据，在本例中为JSON数据
+
+	hClient.CloseRequest(); // 关闭HTTP请求函数
+
 	// 解析json数据
 	
 	string resStrData = string(resData);
 	CString strTemp;
-	std::string value;
+	string value;
+
 
 	Json::CharReaderBuilder builder;
-	const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
-
-	JSONCPP_STRING errs;
+	const unique_ptr<Json::CharReader> reader(builder.newCharReader());
+	JSONCPP_STRING errs; // JsonCpp在0.11.z版本的读取方式，旧版本API不再被支持
 	Json::Value root;
 
 	if (reader->parse(resStrData.c_str(), resStrData.c_str() + resStrData.length(), &root, &errs))  // reader将Json字符串解析到root，root将包含Json里所有子元素  
 	{
-		int errNum = root["code"].asInt();
+		int errNum = root["code"].asInt(); // 将code数据解析为int格式， 约定20000为正确返回值
 		CString resCStr;
-		Json::Value list = root["data"]["items"];  
+		Json::Value list = root["data"]["items"];  // data 数据在 items 项中
 
-		//std::string ss = root.toStyledString();
-		std::string ss = JsonToString(root);
-		
+		// 将root对象完整的打印出
+		string ss = JsonToString(root);
 		ss = UTF8ToGB(ss.c_str());
 		resCStr = ss.c_str();
-
 		GetDlgItem(IDC_STATIC)->SetWindowText(resCStr);
 	}
-	
-	hClient.CloseRequest(); // 关闭HTTP请求函数
 
+	delete[] resData; // 防止内存泄露
 }
 
 
-std::string UnicodeToUTF8(const std::wstring& str)
+string UnicodeToUTF8(const wstring& str)
 {
 	char*     pElementText;
 	int    iTextLen;
@@ -284,7 +283,7 @@ std::string UnicodeToUTF8(const std::wstring& str)
 		iTextLen,
 		NULL,
 		NULL);
-	std::string strText;
+	string strText;
 	strText = pElementText;
 	delete[] pElementText;
 	return strText;
@@ -293,19 +292,20 @@ std::string UnicodeToUTF8(const std::wstring& str)
 
 void CWinInet_TestDlg::OnBnClickedButtonPost()
 {
-	// TODO:  在此添加控件通知处理程序代码
+	// HTTP POST请求实例
 	CString CStrUrl;
 	GetDlgItem(IDC_EDIT_URL)->GetWindowText(CStrUrl);
 	LPCTSTR lUrl;
 	if (CStrUrl == "")
 	{
-		lUrl = "http://127.0.0.1:8000/user/list";
+		lUrl = "http://127.0.0.1:8000/user/list"; // 注意API有所不同
 	}
 	else
 	{
 		lUrl = (LPCTSTR)CStrUrl;
 	}
 
+	// 组装post参数JSON，注意将字符转换为UTF-8编码
 	Json::Value sendData;
 	sendData["user_name"] = UnicodeToUTF8(L"editor");
 	sendData["password"] = UnicodeToUTF8(L"123456");
@@ -314,36 +314,59 @@ void CWinInet_TestDlg::OnBnClickedButtonPost()
 	sendData["user_team"] = UnicodeToUTF8(L"甲班");
 	sendData["available"] = UnicodeToUTF8(L"True");
 
-	//std::string ss = sendData.toStyledString();
-	//ss = (ss.c_str());
-	//CString resCStr = ss.c_str();
-	//GetDlgItem(IDC_STATIC)->SetWindowText(resCStr);
+	// JsonCpp 调试用，查看Json组装效果
+	/*string ss = sendData.toStyledString();
+	ss = (ss.c_str());
+	CString resCStr = ss.c_str();
+	GetDlgItem(IDC_STATIC)->SetWindowText(resCStr);*/
 
-	std::string reqStr;
-
-	//Json::StreamWriterBuilder jswBuilder;
-	//jswBuilder["emitUTF8"] = true;
-	//std::unique_ptr<Json::StreamWriter> jsWriter(jswBuilder.newStreamWriter());
-	//std::ostringstream os;
-	//jsWriter->write(sendData, &os);
-
-
+	// 格式化Json字符串
 	Json::StreamWriterBuilder builder;
 	builder["emitUTF8"] = true;
 	builder["indentation"] = "";  // assume default for comments is None
-	std::string str = Json::writeString(builder, sendData);
+	string reqStr = Json::writeString(builder, sendData);
 
-
-
-	reqStr = str;
-	GetDlgItem(IDC_STATIC)->SetWindowText(reqStr.c_str());
+	// 开始创建 HTTP 客户端
 	CHttpClient hClient;
 
 	hClient.SetConnectTimeOut(5000); // 设置连接超时(单位：毫秒)
-	hClient.OpenRequest(lUrl, REQ_METHOD_POST);
-	hClient.SendRequest((reqStr.c_str()), reqStr.length());
+	hClient.OpenRequest(lUrl, REQ_METHOD_POST); // 设置请求方式为POST
+	hClient.SendRequest((reqStr.c_str()), reqStr.length()); // 在请求头中加入请求的字符串与字符串长度
 	DWORD dwSendLen = 0;
 	hClient.SendReqBodyData(NULL, 0, dwSendLen);
-	hClient.EndSendRequest();
 
+	DWORD resCode = hClient.GetRespCode(); // HTTP响应码 200代表成功 404 not find 500 服务器错误
+	string resHeader = hClient.GetRespHeader(); // 返回头
+
+	DWORD dwResLen = 0;
+	DWORD dwLen = 1024;
+	CHAR* resData = new CHAR[dwLen];
+
+	BOOL resBool = hClient.GetRespBodyData(resData, dwLen, dwResLen); // 获取HTTP响应消息体数据，在本例中为JSON数据，这里约定为修改的数据
+
+	hClient.CloseRequest(); // 关闭HTTP请求函数
+
+	// JsonCpp在0.11.z版本的读取方式，旧版本API不再被支持
+
+	string resStrData = string(resData);
+	Json::CharReaderBuilder geter;
+	const unique_ptr<Json::CharReader> reader(geter.newCharReader());
+	JSONCPP_STRING errs; 
+	Json::Value root;
+
+	if (reader->parse(resStrData.c_str(), resStrData.c_str() + resStrData.length(), &root, &errs))  // reader将Json字符串解析到root，root将包含Json里所有子元素  
+	{
+		CString csResData;
+		int errNum = root["code"].asInt(); // 将code数据解析为int格式， 约定20000为正确返回值
+		
+		// 当code 不为20000时， 可以通过message 获取错误信息
+		
+		csResData.Format("%d", errNum);
+		string ss = JsonToString(root);
+		ss = UTF8ToGB(ss.c_str());
+		csResData = csResData+": "+ ss.c_str();
+		GetDlgItem(IDC_STATIC)->SetWindowText(csResData);
+	}
+
+	delete[] resData; // 防止内存泄露
 }
